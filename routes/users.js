@@ -19,8 +19,11 @@ const middleware = {
 
       if (!valid) {
         log(valid, errors);
-        return res.status(400)
-                  .json({ status: 400, message: 'invalid or missing fields' });
+        return res.status(StatusCodes.BAD_REQUEST)
+                  .json({
+                    status:  StatusCodes.BAD_REQUEST,
+                    message: StatusCodes.getStatusText(StatusCodes.BAD_REQUEST)
+                  });
       }
 
       req.context.user = { ...req.body };
@@ -42,14 +45,16 @@ const middleware = {
         if (user) {
           log(`user ${username} already exists`);
           return res
-            .status(400)
-            .json({ message: 'user already exists', status: 400 });
+            .status(StatusCodes.CONFLICT)
+            .json({ message: StatusCodes.getStatusText(StatusCodes.CONFLICT), status: StatusCodes.CONFLICT });
         }
       } catch (e) {
         log(e);
-        return res
-          .status(400)
-          .json({ message: 'something went wrong, please try again later', status: 400 });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+                  .json({
+                    message: StatusCodes.getStatusText(StatusCodes.INTERNAL_SERVER_ERROR),
+                    status:  StatusCodes.INTERNAL_SERVER_ERROR
+                  });
       }
 
       return next();
@@ -68,12 +73,14 @@ const middleware = {
         await db.collection('users').insertOne(user);
       } catch (e) {
         log(e);
-        return res
-          .status(400)
-          .json({ message: 'something went wrong, please try again later', status: 400 });
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+                  .json({
+                    message: StatusCodes.getStatusText(StatusCodes.INTERNAL_SERVER_ERROR),
+                    status:  StatusCodes.INTERNAL_SERVER_ERROR
+                  });
       }
 
-      req.context.user = _.omit(user, [ 'password', '_id', '__version' ]);
+      req.context.user = _.omit(user, [ 'password', '__version' ]);
       return next();
     },
 
