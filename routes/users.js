@@ -1,0 +1,213 @@
+const Express     = require('express');
+const Router      = Express.Router();
+const StatusCodes = require('http-status-codes');
+const _           = require('lodash');
+const log         = require('debug')('app:routes:users');
+const ObjectID    = require('mongodb').ObjectID;
+
+
+const middleware = {
+
+  create: {
+
+    /**
+     * Ensure new user is valid
+     */
+    validate: async (req, res, next) => {
+      const validator         = req.app.locals.validator;
+      const [ valid, errors ] = await validator.validate('user_create', req.body);
+
+      if (!valid) {
+        log(valid, errors);
+        return res.status(400)
+                  .json({ status: 400, message: 'invalid or missing fields' });
+      }
+
+      req.context.user = { ...req.body };
+      return next();
+    },
+
+
+    /**
+     * Ensure user is unique in the database
+     */
+    ensureUnique: async (req, res, next) => {
+      const { username } = req.context.user;
+
+      try {
+        const db   = req.app.locals.database.SmartHome;
+        const user = await db.collection('users')
+                             .findOne({ username });
+
+        if (user) {
+          log(`user ${username} already exists`);
+          return res
+            .status(400)
+            .json({ message: 'user already exists', status: 400 });
+        }
+      } catch (e) {
+        log(e);
+        return res
+          .status(400)
+          .json({ message: 'something went wrong, please try again later', status: 400 });
+      }
+
+      return next();
+    },
+
+    /**
+     * Save the user in the database
+     */
+    insert: async (req, res, next) => {
+      const user        = req.context.user;
+      user.createdAt    = Date.now();
+      user.lastModified = Date.now();
+
+      const db = req.app.locals.database.SmartHome;
+      try {
+        await db.collection('users').insertOne(user);
+      } catch (e) {
+        log(e);
+        return res
+          .status(400)
+          .json({ message: 'something went wrong, please try again later', status: 400 });
+      }
+
+      req.context.user = _.omit(user, [ 'password', '_id', '__version' ]);
+      return next();
+    },
+
+  },
+
+  list: {
+
+    find: async (req, res, next) => {
+      const db  = req.app.locals.database.SmartHome;
+      let users = [];
+      try {
+        users = await db.collection('users')
+                        .find()
+                        .project({ _id: 1, username: 1 })
+                        .toArray();
+      } catch (e) {
+        log(e);
+        return res
+          .status(StatusCodes.BAD_REQUEST)
+          .json({ message: StatusCodes.getStatusText(StatusCodes.BAD_REQUEST), status: StatusCodes.BAD_REQUEST });
+      }
+
+      req.context.users = users;
+      return next();
+    },
+
+  },
+
+  one: {
+
+    find: async (req, res, next) => {
+      const db = req.app.locals.database.SmartHome;
+      let user = null;
+      try {
+        user = await db.collection('users').findOne({
+          $or: [
+            { username: req.params.username },
+            { _id: ObjectID.isValid(req.params.username) ? ObjectID(req.params.username) : undefined }
+          ]
+        });
+      } catch (e) {
+        log(e);
+        return res
+          .status(StatusCodes.NOT_FOUND)
+          .json({ message: StatusCodes.getStatusText(StatusCodes.NOT_FOUND), status: StatusCodes.NOT_FOUND });
+      }
+
+      req.context.user = user;
+      return next();
+    },
+
+  },
+
+  delete: {
+
+    delete: async (req, res, next) => {
+      const db   = req.app.locals.database.SmartHome;
+      let result = null;
+      try {
+        result = await db.collection('users').deleteOne({
+          $or: [
+            { username: req.params.username },
+            { _id: ObjectID.isValid(req.params.username) ? ObjectID(req.params.username) : undefined }
+          ]
+        });
+
+        if (!result.deletedCount) {
+          log(`user ${req.params.username} not found`);
+          return res
+            .status(StatusCodes.NOT_FOUND)
+            .json({ message: StatusCodes.getStatusText(StatusCodes.NOT_FOUND), status: StatusCodes.NOT_FOUND });
+        }
+      } catch (e) {
+        log(e);
+        return res
+          .status(StatusCodes.NOT_FOUND)
+          .json({ message: StatusCodes.getStatusText(StatusCodes.NOT_FOUND), status: StatusCodes.NOT_FOUND });
+      }
+
+      return next();
+    },
+
+  }
+
+};
+
+
+Router.post(
+  '/',
+  middleware.create.validate,
+  middleware.create.ensureUnique,
+  middleware.create.insert,
+  (req, res) => {
+    log(`inserted user ${_.get(req, 'context.user.username')} into the database`);
+    return res.json({
+      status: StatusCodes.OK,
+      user:   _.get(req, 'context.user')
+    });
+  }
+);
+
+Router.get(
+  '/',
+  middleware.list.find,
+  (req, res) => {
+    log('retrieved users');
+    return res.json({
+      status: StatusCodes.OK,
+      users:  _.get(req, 'context.users', [])
+    });
+  }
+);
+
+Router.get(
+  '/:username',
+  middleware.one.find,
+  (req, res) => {
+    log('retrieved user');
+    return res.json({
+      status: StatusCodes.OK,
+      user:   _.get(req, 'context.user')
+    });
+  }
+);
+
+Router.delete(
+  '/:username',
+  middleware.delete.delete,
+  (req, res) => {
+    log('deleted user');
+    return res.json({
+      status: StatusCodes.OK,
+    });
+  }
+);
+
+module.exports = Router;
