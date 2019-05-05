@@ -121,6 +121,10 @@ const middleware = {
             { _id: ObjectID.isValid(req.params.username) ? ObjectID(req.params.username) : undefined }
           ]
         });
+
+        if (!user) {
+          throw new Error('user not found');
+        }
       } catch (e) {
         log(e);
         return res
