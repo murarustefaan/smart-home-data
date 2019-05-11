@@ -184,10 +184,15 @@ Router.post(
   middleware.create.ensureUnique,
   middleware.create.insert,
   (req, res) => {
-    log(`inserted user ${_.get(req, 'context.user.username')} into the database`);
+    const user     = _.get(req, 'context.user');
+    const username = _.get(user, 'username');
+    const userId   = _.get(user, '_id');
+    log(`inserted user ${username} into the database`);
+
+    res.header('Location', `/users/${userId}`);
     return res.json({
       status: StatusCodes.OK,
-      user:   _.get(req, 'context.user')
+      user
     });
   }
 );
