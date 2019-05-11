@@ -91,9 +91,15 @@ const middleware = {
     find: async (req, res, next) => {
       const db  = req.app.locals.database.SmartHome;
       let users = [];
+
+      const query = {};
+      if (req.query.username) {
+        query.username = req.query.username;
+      }
+
       try {
         users = await db.collection('users')
-                        .find()
+                        .find(query)
                         .project({ _id: 1, username: 1 })
                         .toArray();
       } catch (e) {
