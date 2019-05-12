@@ -121,12 +121,7 @@ const middleware = {
       const db = req.app.locals.database.SmartHome;
       let user = null;
       try {
-        user = await db.collection('users').findOne({
-          $or: [
-            { username: req.params.username },
-            { _id: ObjectID.isValid(req.params.username) ? ObjectID(req.params.username) : undefined }
-          ]
-        });
+        user = await db.collection('users').findOne({ _id: ObjectID(req.params.userId) });
 
         if (!user) {
           throw new Error('user not found');
@@ -145,29 +140,39 @@ const middleware = {
   },
 
   delete: {
+    validate: async (req, res, next) => {
+      const valid = ObjectID.isValid(req.params.userId);
+      if (!valid) {
+        log(`${req.params.userId} is not a valid MongoDB ObjectID`);
+        return res.status(StatusCodes.BAD_REQUEST)
+                  .json({
+                    status:  StatusCodes.BAD_REQUEST,
+                    message: 'not a valid user id'
+                  });
+      }
+
+      return next();
+    },
 
     delete: async (req, res, next) => {
       const db   = req.app.locals.database.SmartHome;
       let result = null;
       try {
         result = await db.collection('users').deleteOne({
-          $or: [
-            { username: req.params.username },
-            { _id: ObjectID.isValid(req.params.username) ? ObjectID(req.params.username) : undefined }
-          ]
+          _id: ObjectID(req.params.userId),
         });
 
         if (!result.deletedCount) {
-          log(`user ${req.params.username} not found`);
+          log(`user ${req.params.userId} not found`);
           return res
             .status(StatusCodes.NOT_FOUND)
-            .json({ message: StatusCodes.getStatusText(StatusCodes.NOT_FOUND), status: StatusCodes.NOT_FOUND });
+            .json({ message: 'user not found', status: StatusCodes.NOT_FOUND });
         }
       } catch (e) {
         log(e);
         return res
-          .status(StatusCodes.NOT_FOUND)
-          .json({ message: StatusCodes.getStatusText(StatusCodes.NOT_FOUND), status: StatusCodes.NOT_FOUND });
+          .status(StatusCodes.INTERNAL_SERVER_ERROR)
+          .json({ message: 'something went wrong, please try again later', status: StatusCodes.INTERNAL_SERVER_ERROR });
       }
 
       return next();
@@ -210,7 +215,7 @@ Router.get(
 );
 
 Router.get(
-  '/:username',
+  '/:userId',
   middleware.one.find,
   (req, res) => {
     log('retrieved user');
@@ -222,12 +227,12 @@ Router.get(
 );
 
 Router.delete(
-  '/:username',
+  '/:userId',
   middleware.delete.delete,
   (req, res) => {
     log('deleted user');
     return res.json({
-      status: StatusCodes.OK,
+      status: StatusCodes.NO_CONTENT,
     });
   }
 );
